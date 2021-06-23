@@ -1,11 +1,15 @@
 import numpy as np
+import matplotlib.pyplot as plt
+
 from PyQt5 import QtWidgets, QtCore, QtGui
 from PyQt5.QtWidgets import *
-import matplotlib.pyplot as plt
-import os
+
+from pyFAST.input_output import FASTOutputFile
 
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
+
+import pandas as pd
 
 class Plotten(FigureCanvas):
     def __init__(self, width=6, height=5, dpi=100):
@@ -16,27 +20,38 @@ class Plotten(FigureCanvas):
         self.axes = self.fig.add_subplot()
         
     
-    def update_figure(self, data_set):
+    def update_figure(self, data_set, plot_data):
         
         
         self.axes.cla()
-        variables = data_set[0]
-        units = data_set[1]
-        results = data_set[2]
         
-        x_axis_num = 0
-        y_axis_num = 10
-        
-        label_x = str(variables[x_axis_num] + ' ' + units[x_axis_num])
-        label_y = str(variables[y_axis_num] + ' ' + units[y_axis_num])
-        
-        self.axes.set_xlabel(label_x)
-        self.axes.set_ylabel(label_y)
-        self.axes.plot(results[:, x_axis_num], results[:, y_axis_num])
-        self.draw()
+        #self.axes.set_xlabel(label_x)
+        #self.axes.set_ylabel(label_y)
+        if data_set.empty is not True:    
+            self.axes.plot(data_set['Time_[s]'], data_set[plot_data])
+            self.draw()
         
 
+    #def save_figure(self, figureToSave, pathToSave):
+
+
+
+class DataHandler():
+    def __init__(self):
+        self.df = pd.DataFrame({'A' : []})
+        self.df_variables = np.array
         
+    def importResults(self, dataFile):
+        
+        del self.df
+        self.df = FASTOutputFile(dataFile).toDataFrame()
+        del self.df_variables
+        self.df_variables = self.df.columns.to_numpy()
+
+    #def storeResults(self, pathToStore, list_of_entries):
+           
+
+
 
 
 class MainClassAsGUI(QtWidgets.QWidget):
@@ -48,6 +63,10 @@ class MainClassAsGUI(QtWidgets.QWidget):
         
         self.setWindowTitle('Fast Data Plot')
         self.label=QLabel(self)
+
+        self.dataHandler = DataHandler()
+
+        self.plotWidget = Plotten()
         
         #Set Window Size
         width = 600
@@ -59,12 +78,18 @@ class MainClassAsGUI(QtWidgets.QWidget):
                 
         #Create Button for File Selection
         self.selectFileButton = QtWidgets.QPushButton('Select Fast output File')
-        self.selectFileButton.clicked.connect(self.selectAndReadFile)
+        self.selectFileButton.clicked.connect(self.selectFile)
         subLayout1.addWidget(self.selectFileButton)
         
         #Create Text Field for File Name
         self.fileNameLineEdit = QtWidgets.QLineEdit()
         subLayout1.addWidget(self.fileNameLineEdit)
+
+        self.comboBoxSelection = QtWidgets.QComboBox()
+        subLayout1.addWidget(self.comboBoxSelection)
+        self.comboBoxSelection.currentIndexChanged.connect(self.plotFigure)
+
+        
     
         subLayout1.addStretch()
         
@@ -77,84 +102,34 @@ class MainClassAsGUI(QtWidgets.QWidget):
         mainLayout.addLayout(subLayout1, 1,1)
         mainLayout.addLayout(subLayout2, 2,1)
         self.setLayout(mainLayout)
+
+    def plotFigure(self):
+        self.plotWidget.update_figure(self.dataHandler.df, self.comboBoxSelection.currentText())
         
-       
-    def readLineEdit(self):
-        self.fileNameReadIn = self.fileNameLineEdit.text()
+    def updateComboBox(self, dataFrame):
+        self.comboBoxSelection.clear()
+        self.comboBoxSelection.addItems(dataFrame[1:])
+
+
+    def readLineEdit(self, lineEditToRead):
+        return lineEditToRead.text()
     
-    def selectAndReadFile(self):
+    
+    def selectFile(self):
         
         fname = QFileDialog.getOpenFileName(self, 'Open Fast Output file', 
          'c:\\',"Fast Output files (*.out)")
         self.fileNameLineEdit.setText(str(fname[0]))
         
+        lineEdit_fileName = self.readLineEdit(self.fileNameLineEdit)
         
-        with open(fname[0]) as file_in:
-            lines = []
-            for line in file_in:
-                lines.append(line)
-            file_in.close()
-
-            analysis_info1 = lines[1]
-            analysis_info1 = str(analysis_info1[0])  
-
-            analysis_info2 = [s for s in lines if "Description from the FAST input file:" in s]
-            analysis_info2 = str(analysis_info2[0])
-            analysis_info2 = analysis_info2.strip("Description from the FAST input file: ")
-
-            line_index_info1 = 1
-            
-            line_index_info2 = [i for i, s in enumerate(lines) if "Description from the FAST input file:" in s]
-
-            if len(line_index_info2) == 1:
-                line_index_info2 = int(line_index_info2[0])
-            else:
-                print("Wrong format")
-                exit() 
-
-            line_index_data_variables = line_index_info2 + 2
-            line_index_data_units = line_index_data_variables + 1
-            line_index_data_start = line_index_data_units + 1
-            
-            data_variables = []
-            data_variables = lines[line_index_data_variables].split("\t")
-            data_variables_array = np.array(data_variables)
-            
-            tmp_variables = []
-            for element in data_variables:
-                tmp_variables.append(element.strip())
-            data_variables = tmp_variables
-            
-            data_units = []
-            data_units = lines[line_index_data_units].split("\t") 
-            
-            tmp_units = []
-            for element in data_units:
-                tmp_units.append(element.strip())
-            data_units = tmp_units
-            data_units_array = np.array(data_units, dtype=str)
-            
-            num_timesteps = int (len(lines) - line_index_data_start) 
-            num_variables = int(len(data_variables))
-            
-            data_array = np.zeros((num_timesteps, num_variables))
-            
-            for i in range(line_index_data_start, num_timesteps+line_index_data_start):
-                data_array[(i-line_index_data_start)] = lines[i].split("\t")
-                
-            list_of_data_arrays = []
-            list_of_data_arrays.append(data_variables_array)
-            list_of_data_arrays.append(data_units_array)
-            list_of_data_arrays.append(data_array)
-            
-            self.plotWidget.update_figure(list_of_data_arrays)
-            
-            
-            
-                 
-    
+        self.dataHandler.importResults(lineEdit_fileName)
         
+        self.updateComboBox(self.dataHandler.df_variables)
         
+
+
+
 if __name__ == "__main__":
     app = QtWidgets.QApplication([])
     gui = MainClassAsGUI()
